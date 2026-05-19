@@ -2,9 +2,9 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "API REST — Videogame Tracker (Fase 1)",
-  "main": "src/index.js",
+  "main": "backend/src/index.js",
   "scripts": {
-    "start": "node --experimental-sqlite src/index.js",
+    "start": "node --experimental-sqlite backend/src/index.js",
     "dev":   "node --experimental-sqlite --watch src/index.js"
   },
   "dependencies": {

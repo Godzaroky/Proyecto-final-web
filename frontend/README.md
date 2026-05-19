@@ -39,3 +39,5 @@ npm run dev
 \`\`\`
 
 ## Mis primeros Items
+
+![Primeros juegos](backend/docs/captura-items.png)
