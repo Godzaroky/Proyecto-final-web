@@ -1,128 +1,117 @@
-/**
- * ListaItems.jsx
- * Lista filtrable y ordenable de videojuegos.
- * Props:
- *   items      — Item[]
- *   onEditar   — fn(item) => void
- *   onArchivar — fn(id: string) => void
- */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useStorage } from '../context/StorageContext';
+import { CATEGORIAS, ESTADOS } from '../utils/categorias';
 import ItemCard from './ItemCard';
-import { CATEGORIAS, ESTADOS } from '../utils/itemFactory';
 
-export default function ListaItems({ items, onEditar, onArchivar }) {
-  const [busqueda,        setBusqueda]        = useState('');
-  const [filtroEstado,    setFiltroEstado]    = useState('todos');
+/**
+ * useRef aplicado para scroll automático al último juego añadido.
+ * lastItemRef.current.scrollIntoView() se llama cuando la lista cambia.
+ */
+export default function ListaItems({ refrescador }) {
+  const { obtenerItems, cargando, error } = useStorage();
+  const [juegos, setJuegos] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
-  const [verArchivados,   setVerArchivados]   = useState(false);
+  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [busqueda, setBusqueda] = useState('');
 
-  const activos    = items.filter(i => i.activo);
-  const archivados = items.filter(i => !i.activo);
+  // useRef para scroll al último elemento de la lista
+  const lastItemRef = useRef(null);
+  const prevLengthRef = useRef(0);
 
-  const base = verArchivados ? archivados : activos;
-
-  const visibles = base.filter(item => {
-    const q   = busqueda.toLowerCase();
-    const ok1 = !q || item.nombre.toLowerCase().includes(q) ||
-                (item.atributos?.desarrollador ?? '').toLowerCase().includes(q);
-    const ok2 = filtroEstado    === 'todos' || item.estado      === filtroEstado;
-    const ok3 = filtroCategoria === 'todas' || item.categoriaId === filtroCategoria;
-    return ok1 && ok2 && ok3;
-  });
-
-  const stats = {
-    jugando:    activos.filter(i => i.estado === 'jugando').length,
-    completado: activos.filter(i => i.estado === 'completado').length,
-    pendiente:  activos.filter(i => i.estado === 'pendiente').length,
+  const cargar = async () => {
+    const lista = await obtenerItems();
+    setJuegos(lista.filter((j) => j.activo !== false && j.activo !== 0));
   };
 
+  useEffect(() => {
+    cargar();
+  }, [refrescador]);
+
+  // Scroll automático cuando se agrega un juego nuevo
+  useEffect(() => {
+    if (juegos.length > prevLengthRef.current && lastItemRef.current) {
+      lastItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    prevLengthRef.current = juegos.length;
+  }, [juegos.length]);
+
+  const juegosFiltrados = juegos.filter((j) => {
+    const coincideCategoria =
+      filtroCategoria === 'todas' || j.categoriaId === filtroCategoria;
+    const coincideEstado =
+      filtroEstado === 'todos' || j.estado === filtroEstado;
+    const coincideBusqueda =
+      !busqueda || j.nombre.toLowerCase().includes(busqueda.toLowerCase());
+    return coincideCategoria && coincideEstado && coincideBusqueda;
+  });
+
   return (
-    <section className="lista">
+    <section className="lista-items">
+      <div className="lista-header">
+        <h2>🎮 Mi Colección ({juegosFiltrados.length})</h2>
 
-      <div className="stats-bar">
-        <div className="stat-chip stat-jugando">
-          <span className="stat-num">{stats.jugando}</span>
-          <span className="stat-lbl">JUGANDO</span>
-        </div>
-        <div className="stat-chip stat-completado">
-          <span className="stat-num">{stats.completado}</span>
-          <span className="stat-lbl">COMPLETADOS</span>
-        </div>
-        <div className="stat-chip stat-pendiente">
-          <span className="stat-num">{stats.pendiente}</span>
-          <span className="stat-lbl">PENDIENTES</span>
-        </div>
-        <div className="stat-chip stat-total">
-          <span className="stat-num">{activos.length}</span>
-          <span className="stat-lbl">EN BIBLIOTECA</span>
-        </div>
-      </div>
+        <div className="filtros">
+          <input
+            type="search"
+            placeholder="🔍 Buscar juego…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="input-busqueda"
+          />
 
-      <div className="controles">
-        <input
-          className="ctrl-busqueda"
-          type="search"
-          placeholder="// buscar juego o estudio..."
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-        />
-        <select className="ctrl-select" value={filtroEstado}
-          onChange={e => setFiltroEstado(e.target.value)}>
-          <option value="todos">TODOS LOS ESTADOS</option>
-          {ESTADOS.map(s => (
-            <option key={s.id} value={s.id}>{s.label.toUpperCase()}</option>
-          ))}
-        </select>
-        <select className="ctrl-select" value={filtroCategoria}
-          onChange={e => setFiltroCategoria(e.target.value)}>
-          <option value="todas">TODOS LOS GÉNEROS</option>
-          {CATEGORIAS.map(c => (
-            <option key={c.id} value={c.id}>{c.icon} {c.label}</option>
-          ))}
-        </select>
-        {archivados.length > 0 && (
-          <button
-            className={`ctrl-toggle ${verArchivados ? 'active' : ''}`}
-            onClick={() => setVerArchivados(v => !v)}
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
           >
-            {verArchivados ? 'VER ACTIVOS' : `ARCHIVADOS (${archivados.length})`}
-          </button>
-        )}
-      </div>
+            <option value="todas">Todos los géneros</option>
+            {CATEGORIAS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.emoji} {c.nombre}
+              </option>
+            ))}
+          </select>
 
-      <div className="lista-titulo">
-        <span className="lista-label">
-          {verArchivados ? '// ARCHIVADOS' : '// BIBLIOTECA'}
-        </span>
-        <span className="lista-count">
-          {visibles.length} resultado{visibles.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      {visibles.length === 0 ? (
-        <div className="lista-vacia">
-          <p className="vacia-icon">◈</p>
-          <p className="vacia-msg">
-            {busqueda || filtroEstado !== 'todos' || filtroCategoria !== 'todas'
-              ? 'Sin resultados para esos filtros.'
-              : verArchivados
-                ? 'No hay juegos archivados.'
-                : 'Tu biblioteca está vacía. ¡Agrega tu primer juego!'}
-          </p>
+          <select
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+          >
+            <option value="todos">Todos los estados</option>
+            {ESTADOS.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.emoji} {e.nombre}
+              </option>
+            ))}
+          </select>
         </div>
-      ) : (
-        <div className="cards-grid">
-          {visibles.map(item => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onEditar={onEditar}
-              onArchivar={onArchivar}
-            />
-          ))}
+      </div>
+
+      {error && (
+        <div className="error-banner">
+          ⚠️ Error: {error}. Verifica que el backend esté corriendo.
         </div>
       )}
 
+      {cargando && <div className="spinner">Cargando juegos…</div>}
+
+      {!cargando && juegosFiltrados.length === 0 && (
+        <div className="lista-vacia">
+          <p>No hay juegos que coincidan con los filtros.</p>
+          {juegos.length === 0 && (
+            <p>¡Agrega tu primer juego arriba! 🚀</p>
+          )}
+        </div>
+      )}
+
+      <div className="cards-grid">
+        {juegosFiltrados.map((juego, idx) => (
+          <div
+            key={juego.id}
+            ref={idx === juegosFiltrados.length - 1 ? lastItemRef : null}
+          >
+            <ItemCard juego={juego} onActualizado={cargar} />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

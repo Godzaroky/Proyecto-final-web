@@ -1,225 +1,180 @@
-/**
- * routes/items.js
- * 5 endpoints del recurso "items" (videojuegos).
- *
- *  GET    /api/items                → lista todos los activos
- *  POST   /api/items                → crea un nuevo juego
- *  PUT    /api/items/:id            → actualiza un juego existente
- *  DELETE /api/items/:id            → archiva (soft-delete, activo = 0)
- *  POST   /api/items/:id/registro   → agrega una sesión de juego
- */
-
-'use strict';
-
-const express    = require('express');
-const { randomUUID } = require('crypto');
-const db         = require('../db');
-
+const express = require('express');
 const router = express.Router();
+const db = require('../db/database');
 
-// ─── Helper: convierte una fila cruda en objeto JS limpio ────────────────────
-function toItem(row) {
+// Parsear fila de SQLite a objeto JS limpio
+function parsearItem(row) {
   if (!row) return null;
   return {
     ...row,
-    atributos: JSON.parse(row.atributos ?? '{}'),
-    activo:    Boolean(row.activo),
+    activo: Boolean(row.activo),
+    atributos: (() => {
+      try { return JSON.parse(row.atributos || '{}'); }
+      catch { return {}; }
+    })(),
   };
 }
 
-// ─── GET /api/items ───────────────────────────────────────────────────────────
-/**
- * Devuelve todos los videojuegos con activo = 1.
- * Respuesta 200: Item[]
- */
+// GET /api/items — todos los activos
 router.get('/', (req, res) => {
   try {
     const rows = db
       .prepare('SELECT * FROM items WHERE activo = 1 ORDER BY fechaRegistro DESC')
       .all();
-    res.json(rows.map(toItem));
+    res.json(rows.map(parsearItem));
   } catch (err) {
-    console.error('[GET /api/items]', err.message);
-    res.status(500).json({ error: 'Error al obtener los juegos.' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ─── POST /api/items ──────────────────────────────────────────────────────────
-/**
- * Crea un videojuego nuevo.
- * Body esperado (JSON):
- *   { nombre, categoriaId?, estado?, puntuacion?, notas?, atributos?, fechaRegistro?, activo? }
- * Respuesta 201: Item creado
- */
-router.post('/', (req, res) => {
+// GET /api/items/:id — uno solo
+router.get('/:id', (req, res) => {
   try {
-    const {
-      id,
-      nombre,
-      categoriaId    = 'rpg',
-      estado         = 'pendiente',
-      puntuacion     = null,
-      fechaRegistro,
-      fechaActividad,
-      notas          = '',
-      atributos      = {},
-      activo         = true,
-    } = req.body ?? {};
+    const row = db
+      .prepare('SELECT * FROM items WHERE id = ?')
+      .get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'No encontrado' });
+    res.json(parsearItem(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    // Validación mínima
-    if (!nombre || !String(nombre).trim()) {
-      return res.status(400).json({ error: '"nombre" es obligatorio.' });
-    }
+// POST /api/items — crear
+router.post('/', (req, res) => {
+  const {
+    nombre,
+    categoriaId = 'rpg',
+    estado = 'pendiente',
+    puntuacion = null,
+    notas = '',
+    atributos = {},
+  } = req.body;
 
-    const itemId = id || randomUUID();
-    const now    = new Date().toISOString();
+  if (!nombre || nombre.trim().length < 2) {
+    return res.status(400).json({ error: 'El nombre debe tener al menos 2 caracteres' });
+  }
+
+  try {
+    const nuevo = {
+      id: require('crypto').randomUUID(),
+      nombre: nombre.trim(),
+      categoriaId,
+      estado,
+      puntuacion,
+      fechaRegistro: new Date().toISOString(),
+      fechaActividad: new Date().toISOString(),
+      notas,
+      atributos: JSON.stringify(atributos),
+      activo: 1,
+    };
 
     db.prepare(`
       INSERT INTO items
         (id, nombre, categoriaId, estado, puntuacion,
          fechaRegistro, fechaActividad, notas, atributos, activo)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      itemId,
-      String(nombre).trim(),
-      categoriaId,
-      estado,
-      puntuacion,
-      fechaRegistro  || now,
-      fechaActividad || now,
-      notas,
-      JSON.stringify(atributos),
-      activo ? 1 : 0,
-    );
+        (@id, @nombre, @categoriaId, @estado, @puntuacion,
+         @fechaRegistro, @fechaActividad, @notas, @atributos, @activo)
+    `).run(nuevo);
 
-    const creado = toItem(db.prepare('SELECT * FROM items WHERE id = ?').get(itemId));
-    res.status(201).json(creado);
+    res.status(201).json(parsearItem({ ...nuevo, activo: 1 }));
   } catch (err) {
-    console.error('[POST /api/items]', err.message);
-    res.status(500).json({ error: 'Error al crear el juego.' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ─── PUT /api/items/:id ───────────────────────────────────────────────────────
-/**
- * Actualiza los campos de un juego existente (partial update).
- * Solo se sobreescriben los campos que vienen en el body.
- * Respuesta 200: Item actualizado
- */
+// PUT /api/items/:id — actualizar
 router.put('/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    nombre,
+    categoriaId,
+    estado,
+    puntuacion,
+    notas,
+    atributos,
+  } = req.body;
+
   try {
-    const { id } = req.params;
+    const actual = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+    if (!actual) return res.status(404).json({ error: 'No encontrado' });
 
-    const existente = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
-    if (!existente) {
-      return res.status(404).json({ error: `Juego con id "${id}" no encontrado.` });
-    }
-
-    // Merge: si el campo no viene en el body, conservar el valor actual
-    const {
-      nombre         = existente.nombre,
-      categoriaId    = existente.categoriaId,
-      estado         = existente.estado,
-      puntuacion     = existente.puntuacion,
-      notas          = existente.notas,
-      atributos,
-      activo,
-    } = req.body ?? {};
-
-    const atributosStr = atributos !== undefined
-      ? JSON.stringify(atributos)
-      : existente.atributos;
-
-    const activoInt = activo !== undefined
-      ? (activo ? 1 : 0)
-      : existente.activo;
+    const actualizado = {
+      nombre: nombre?.trim() || actual.nombre,
+      categoriaId: categoriaId || actual.categoriaId,
+      estado: estado || actual.estado,
+      puntuacion: puntuacion !== undefined ? puntuacion : actual.puntuacion,
+      notas: notas !== undefined ? notas : actual.notas,
+      atributos:
+        atributos !== undefined
+          ? JSON.stringify(atributos)
+          : actual.atributos,
+      fechaActividad: new Date().toISOString(),
+      id,
+    };
 
     db.prepare(`
-      UPDATE items
-      SET nombre = ?, categoriaId = ?, estado = ?, puntuacion = ?,
-          notas = ?, atributos = ?, activo = ?, fechaActividad = ?
-      WHERE id = ?
-    `).run(
-      nombre, categoriaId, estado, puntuacion,
-      notas, atributosStr, activoInt,
-      new Date().toISOString(),
-      id,
-    );
+      UPDATE items SET
+        nombre = @nombre, categoriaId = @categoriaId, estado = @estado,
+        puntuacion = @puntuacion, notas = @notas, atributos = @atributos,
+        fechaActividad = @fechaActividad
+      WHERE id = @id
+    `).run(actualizado);
 
-    const actualizado = toItem(db.prepare('SELECT * FROM items WHERE id = ?').get(id));
-    res.json(actualizado);
+    const fila = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+    res.json(parsearItem(fila));
   } catch (err) {
-    console.error('[PUT /api/items/:id]', err.message);
-    res.status(500).json({ error: 'Error al actualizar el juego.' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ─── DELETE /api/items/:id ────────────────────────────────────────────────────
-/**
- * Archiva un juego (soft-delete): activo = 0.
- * NO elimina el registro de la BD.
- * Respuesta 200: { message, id }
- */
+// DELETE /api/items/:id — archivar (soft delete)
 router.delete('/:id', (req, res) => {
   try {
-    const { id } = req.params;
-
-    const existente = db.prepare('SELECT id FROM items WHERE id = ?').get(id);
-    if (!existente) {
-      return res.status(404).json({ error: `Juego con id "${id}" no encontrado.` });
-    }
-
-    db.prepare(`
-      UPDATE items SET activo = 0, fechaActividad = ? WHERE id = ?
-    `).run(new Date().toISOString(), id);
-
-    res.json({ message: 'Juego archivado correctamente.', id });
+    const info = db
+      .prepare('UPDATE items SET activo = 0 WHERE id = ?')
+      .run(req.params.id);
+    if (info.changes === 0)
+      return res.status(404).json({ error: 'No encontrado' });
+    res.json({ mensaje: 'Juego archivado correctamente' });
   } catch (err) {
-    console.error('[DELETE /api/items/:id]', err.message);
-    res.status(500).json({ error: 'Error al archivar el juego.' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ─── POST /api/items/:id/registro ────────────────────────────────────────────
-/**
- * Registra una sesión de juego (actividad) asociada a un juego.
- * Body esperado: { valor?, notas?, fecha? }
- *   valor → ej. horas jugadas en esa sesión
- * Respuesta 201: registro creado
- */
+// POST /api/items/:id/registro — registrar horas jugadas ese día
 router.post('/:id/registro', (req, res) => {
+  const { valor, notas = '' } = req.body;
+  if (!valor || isNaN(Number(valor))) {
+    return res.status(400).json({ error: 'valor (horas) es requerido y debe ser número' });
+  }
+
   try {
-    const { id: itemId } = req.params;
+    const juego = db.prepare('SELECT id FROM items WHERE id = ?').get(req.params.id);
+    if (!juego) return res.status(404).json({ error: 'Juego no encontrado' });
 
-    const item = db.prepare('SELECT id FROM items WHERE id = ?').get(itemId);
-    if (!item) {
-      return res.status(404).json({ error: `Juego con id "${itemId}" no encontrado.` });
-    }
+    const registro = {
+      id: require('crypto').randomUUID(),
+      itemId: req.params.id,
+      fecha: new Date().toISOString().split('T')[0],
+      valor: Number(valor),
+      notas,
+    };
 
-    const {
-      valor = null,
-      notas = '',
-      fecha,
-    } = req.body ?? {};
+    db.prepare(
+      'INSERT INTO registros (id, itemId, fecha, valor, notas) VALUES (@id, @itemId, @fecha, @valor, @notas)'
+    ).run(registro);
 
-    const registroId   = randomUUID();
-    const fechaSesion  = fecha || new Date().toISOString();
+    // Actualizar fechaActividad del juego
+    db.prepare('UPDATE items SET fechaActividad = ? WHERE id = ?').run(
+      new Date().toISOString(),
+      req.params.id
+    );
 
-    db.prepare(`
-      INSERT INTO registros (id, itemId, fecha, valor, notas)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(registroId, itemId, fechaSesion, valor, notas);
-
-    // Actualizar la última actividad del juego padre
-    db.prepare('UPDATE items SET fechaActividad = ? WHERE id = ?')
-      .run(fechaSesion, itemId);
-
-    const registro = db.prepare('SELECT * FROM registros WHERE id = ?').get(registroId);
     res.status(201).json(registro);
   } catch (err) {
-    console.error('[POST /api/items/:id/registro]', err.message);
-    res.status(500).json({ error: 'Error al crear el registro.' });
+    res.status(500).json({ error: err.message });
   }
 });
 

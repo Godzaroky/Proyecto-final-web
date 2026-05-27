@@ -1,104 +1,80 @@
+import { useState, useEffect, useRef } from 'react';
+import { StorageProvider } from './context/StorageProvider';
+import { ThemeProvider } from './context/ThemeProvider';
+import { UserProvider } from './context/UserProvider';
+import NavBar from './components/NavBar';
+import FormularioJuego from './components/FormularioJuego';
+import ListaItems from './components/ListaItems';
+import './index.css';
+
 /**
- * App.jsx
- * Raíz de la aplicación.
- * - useState con lazy initializer (lee LocalStorage solo en el primer render)
- * - useEffect para sincronizar estado → LocalStorage en cada cambio
+ * App principal.
+ *
+ * Atajos de teclado implementados con cleanup en el return del useEffect:
+ *   Ctrl+N → enfoca el input de nombre en el formulario
+ *   T      → cambia entre tema claro y oscuro
+ *
+ * El ref del input se sube hasta App para que el atajo Ctrl+N pueda
+ * acceder a él desde cualquier parte de la app.
  */
-import { useState, useEffect } from 'react';
-import FormularioItem from './components/FormularioItem';
-import ListaItems     from './components/ListaItems';
+function AppContent() {
+  const [refrescador, setRefrescador] = useState(0);
 
-const STORAGE_KEY = 'vgt_items';
+  // Ref para enfocar el input de nombre desde el atajo de teclado
+  const inputNombreRef = useRef(null);
 
-export default function App() {
+  const handleJuegoAgregado = () => {
+    setRefrescador((r) => r + 1);
+  };
 
-  // Lazy initializer: JSON.parse solo ocurre en el primer render
-  const [items, setItems] = useState(
-    () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')
-  );
-
-  const [itemEditar,        setItemEditar]        = useState(null);
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
-
-  // Sincronizar con LocalStorage cada vez que cambia items
+  // ─── Atajos de teclado ───────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
+    const handler = (e) => {
+      const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(
+        e.target.tagName
+      );
 
-  function handleGuardar(item) {
-    if (itemEditar) {
-      setItems(prev => prev.map(i => i.id === item.id ? item : i));
-    } else {
-      setItems(prev => [item, ...prev]);
-    }
-    setItemEditar(null);
-    setMostrarFormulario(false);
-  }
+      // Ctrl+N → enfocar input de nombre
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        inputNombreRef.current?.focus();
+        return;
+      }
 
-  function handleEditar(item) {
-    setItemEditar(item);
-    setMostrarFormulario(true);
-  }
+      // T → toggle tema (solo si no estamos escribiendo en un campo)
+      if (!enInput && e.key.toLowerCase() === 't') {
+        // Disparamos un click al botón de tema a través de un CustomEvent
+        // para no duplicar lógica aquí
+        document.dispatchEvent(new CustomEvent('toggle-tema'));
+      }
+    };
 
-  function handleArchivar(id) {
-    setItems(prev => prev.map(i =>
-      i.id === id
-        ? { ...i, activo: false, fechaActividad: new Date().toISOString() }
-        : i
-    ));
-  }
-
-  function handleNuevo() {
-    setItemEditar(null);
-    setMostrarFormulario(true);
-  }
-
-  function handleCancelar() {
-    setItemEditar(null);
-    setMostrarFormulario(false);
-  }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler); // ← cleanup obligatorio
+  }, []);
 
   return (
-    <div className="app">
-
-      <div className="bg-grid"  aria-hidden />
-      <div className="bg-glow"  aria-hidden />
-
-      <header className="app-header">
-        <div className="header-brand">
-          <span className="brand-logo">◈</span>
-          <div>
-            <h1 className="brand-name">LEVELUP</h1>
-            <p className="brand-sub">VIDEOGAME TRACKER // FASE 1</p>
-          </div>
-        </div>
-        <button className="btn-nuevo" onClick={handleNuevo}>
-          <span className="btn-nuevo-icon">+</span>
-          AGREGAR JUEGO
-        </button>
-      </header>
-
+    <div className="app-layout">
+      <NavBar />
       <main className="app-main">
-        <ListaItems
-          items={items}
-          onEditar={handleEditar}
-          onArchivar={handleArchivar}
+        <FormularioJuego
+          inputRef={inputNombreRef}
+          onJuegoAgregado={handleJuegoAgregado}
         />
+        <ListaItems refrescador={refrescador} />
       </main>
-
-      <footer className="app-footer">
-        <span>STW-26 · UVG · {new Date().getFullYear()}</span>
-        <span>FASE 1 — LocalStorage + React 18</span>
-      </footer>
-
-      {mostrarFormulario && (
-        <FormularioItem
-          itemEditar={itemEditar}
-          onGuardar={handleGuardar}
-          onCancelar={handleCancelar}
-        />
-      )}
-
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <UserProvider>
+        <StorageProvider>
+          <AppContent />
+        </StorageProvider>
+      </UserProvider>
+    </ThemeProvider>
   );
 }
