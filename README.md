@@ -208,7 +208,7 @@ valores se malinterpretan.
 
 **ANTES de la optimización:**
 
-![Profiler antes](docs/profiler-antes.png)
+![Profiler antes](docs/captura-items.png)
 
 *Sin `React.memo` ni `useMemo`, todos los `ItemCard` se re-renderizan
 al escribir una letra en el buscador porque la referencia de
