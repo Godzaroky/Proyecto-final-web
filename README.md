@@ -1,4 +1,4 @@
-# 🎮 GameTracker — Mi Colección de Videojuegos
+# GameTracker — Mi Colección de Videojuegos
 
 App full-stack para rastrear mi backlog personal de videojuegos.  
 Construida con React + Vite en el frontend y Node.js + Express + SQLite en el backend.
@@ -138,4 +138,86 @@ La lógica de modo vive únicamente en `StorageProvider.jsx`.
 
 ---
 
-_UVG · Sistemas y Tecnologías Web · Semestre 1, 2026_
+## Mi gráfica original
+
+**¿Qué visualiza?**  
+La **Gráfica de Progreso % por mes** muestra la evolución de cuántos juegos
+del backlog he completado respecto al total registrado, mes a mes, durante
+los últimos 6 meses. Usa un `LineChart` con dos líneas: el porcentaje de
+completados (eje izquierdo) y el total de juegos en el backlog (eje derecho
+con trazado discontinuo).
+
+**¿Por qué la elegí?**  
+Un backlog de videojuegos crece constantemente —siempre hay ofertas, regalos
+de PS Plus o Game Pass. Sin una vista temporal no sabría si realmente estoy
+avanzando o si la pila solo crece. Esta gráfica me permite ver si hay meses
+donde completé más y detectar períodos donde solo acumulé juegos sin
+terminar ninguno. Es la visualización más valiosa para mi tema porque mide
+*productividad real* sobre el backlog.
+
+---
+
+## Mis 3 decisiones técnicas
+
+### 1. Estructura del reducer: acciones ortogonales
+
+Organicé las 8 acciones del reducer en dos grupos claramente separados:
+las que **modifican la lista** (`HIDRATAR`, `AGREGAR`, `ELIMINAR`,
+`EDITAR`, `CAMBIAR_ESTADO`, `REGISTRAR_ACTIVIDAD`) y las que
+**modifican los filtros** (`FILTRAR`, `LIMPIAR_FILTROS`).
+
+Para los filtros usé una única acción `FILTRAR` con un payload
+`{ campo, valor }` en lugar de tres acciones separadas
+(`SET_CATEGORIA`, `SET_ESTADO`, `SET_BUSQUEDA`). Esto reduce el
+boilerplate sin violar el principio de función pura: el reducer sigue
+siendo predecible porque `campo` solo puede ser una de las tres claves
+de filtro del estado.
+
+### 2. Acción más difícil: `REGISTRAR_ACTIVIDAD`
+
+`REGISTRAR_ACTIVIDAD` fue la más compleja porque necesita actualizar un
+campo dentro de un objeto anidado (`item.atributos.horasTotales`) sin
+mutar el estado. Tuve que hacer una doble expansión con spread:
+
+```js
+atributos: {
+  ...item.atributos,
+  horasTotales: (item.atributos?.horasTotales || 0) + accion.payload.valor,
+}
+```
+
+El operador `?.` es necesario porque juegos creados antes de agregar
+`horasTotales` al modelo no tienen ese campo, y sin el guard la suma
+daría `NaN`. El `|| 0` garantiza el valor por defecto sin mutar nada.
+
+### 3. Gráfica más compleja: Progreso % por mes
+
+La `GraficaProgreso` transforma los datos en dos pasos dentro de un
+`useMemo`. Primero construye los últimos 6 meses como claves ISO
+(`YYYY-MM`), luego para cada mes filtra acumulativamente todos los
+juegos registrados **hasta ese mes** (no solo ese mes) usando
+comparación de strings ISO. Esto da una curva acumulativa real, no
+barras por mes. La dificultad estuvo en que `recharts` no puede tener
+dos `YAxis` activos sin asignarle el `yAxisId` correcto a cada `Line` —
+sin ese atributo las dos líneas se superponen en el mismo eje y los
+valores se malinterpretan.
+
+---
+
+## Evidencia del React DevTools Profiler
+
+**ANTES de la optimización:**
+
+![Profiler antes](docs/profiler-antes.png)
+
+*Sin `React.memo` ni `useMemo`, todos los `ItemCard` se re-renderizan
+al escribir una letra en el buscador porque la referencia de
+`handleEliminar` cambia en cada render de `App`.*
+
+**DESPUÉS de la optimización:**
+
+![Profiler después](docs/profiler-despues.png)
+
+*Con `React.memo` en `ItemCard` y `useCallback` en los handlers, solo
+se re-renderiza la `ListaItems` (para recalcular el `useMemo`). Cada
+`ItemCard` permanece estable porque sus props no cambiaron.*
