@@ -13,7 +13,7 @@ require('dotenv').config();
 
 const express    = require('express');
 const cors       = require('cors');
-const itemsRouter = require('./routes/items');
+const itemsRouter = require('../backend/src/routes/items');
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 const app  = express();

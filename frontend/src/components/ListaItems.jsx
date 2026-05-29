@@ -1,117 +1,64 @@
-import { useState, useEffect, useRef } from 'react';
-import { useStorage } from '../context/StorageContext';
-import { CATEGORIAS, ESTADOS } from '../utils/categorias';
+// src/components/ListaItems.jsx
+import { useMemo, useCallback } from 'react';
 import ItemCard from './ItemCard';
 
-/**
- * useRef aplicado para scroll automático al último juego añadido.
- * lastItemRef.current.scrollIntoView() se llama cuando la lista cambia.
- */
-export default function ListaItems({ refrescador }) {
-  const { obtenerItems, cargando, error } = useStorage();
-  const [juegos, setJuegos] = useState([]);
-  const [filtroCategoria, setFiltroCategoria] = useState('todas');
-  const [filtroEstado, setFiltroEstado] = useState('todos');
-  const [busqueda, setBusqueda] = useState('');
+export default function ListaItems({ estado, dispatch }) {
+  const { lista, filtroCategoria, filtroEstado, busqueda } = estado;
 
-  // useRef para scroll al último elemento de la lista
-  const lastItemRef = useRef(null);
-  const prevLengthRef = useRef(0);
+  // useMemo: solo recalcula si cambian lista o filtros
+  const itemsVisibles = useMemo(() => {
+    let res = lista.filter((i) => i.activo);
 
-  const cargar = async () => {
-    const lista = await obtenerItems();
-    setJuegos(lista.filter((j) => j.activo !== false && j.activo !== 0));
-  };
-
-  useEffect(() => {
-    cargar();
-  }, [refrescador]);
-
-  // Scroll automático cuando se agrega un juego nuevo
-  useEffect(() => {
-    if (juegos.length > prevLengthRef.current && lastItemRef.current) {
-      lastItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (busqueda.trim()) {
+      res = res.filter((i) =>
+        i.nombre.toLowerCase().includes(busqueda.toLowerCase())
+      );
     }
-    prevLengthRef.current = juegos.length;
-  }, [juegos.length]);
+    if (filtroCategoria !== 'todas') {
+      res = res.filter((i) => i.categoriaId === filtroCategoria);
+    }
+    if (filtroEstado !== 'todos') {
+      res = res.filter((i) => i.estado === filtroEstado);
+    }
 
-  const juegosFiltrados = juegos.filter((j) => {
-    const coincideCategoria =
-      filtroCategoria === 'todas' || j.categoriaId === filtroCategoria;
-    const coincideEstado =
-      filtroEstado === 'todos' || j.estado === filtroEstado;
-    const coincideBusqueda =
-      !busqueda || j.nombre.toLowerCase().includes(busqueda.toLowerCase());
-    return coincideCategoria && coincideEstado && coincideBusqueda;
-  });
+    return res;
+  }, [lista, busqueda, filtroCategoria, filtroEstado]);
+
+  // useCallback: handlers estables para que ItemCard (memo) no re-renderice
+  const handleEliminar = useCallback(
+    (id) => dispatch({ type: 'ELIMINAR', payload: id }),
+    [dispatch]
+  );
+
+  const handleCambiarEstado = useCallback(
+    (id, nuevoEstado) =>
+      dispatch({ type: 'CAMBIAR_ESTADO', payload: { id, estado: nuevoEstado } }),
+    [dispatch]
+  );
+
+  if (itemsVisibles.length === 0) {
+    return (
+      <div className="lista-vacia">
+        <p>🎮 No hay juegos que coincidan con los filtros.</p>
+      </div>
+    );
+  }
 
   return (
-    <section className="lista-items">
-      <div className="lista-header">
-        <h2>🎮 Mi Colección ({juegosFiltrados.length})</h2>
-
-        <div className="filtros">
-          <input
-            type="search"
-            placeholder="🔍 Buscar juego…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="input-busqueda"
+    <div className="lista-items">
+      <p className="lista-conteo">
+        {itemsVisibles.length} juego{itemsVisibles.length !== 1 ? 's' : ''}
+      </p>
+      <div className="items-grid">
+        {itemsVisibles.map((item) => (
+          <ItemCard
+            key={item.id}
+            item={item}
+            onEliminar={handleEliminar}
+            onCambiarEstado={handleCambiarEstado}
           />
-
-          <select
-            value={filtroCategoria}
-            onChange={(e) => setFiltroCategoria(e.target.value)}
-          >
-            <option value="todas">Todos los géneros</option>
-            {CATEGORIAS.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.emoji} {c.nombre}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-          >
-            <option value="todos">Todos los estados</option>
-            {ESTADOS.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.emoji} {e.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {error && (
-        <div className="error-banner">
-          ⚠️ Error: {error}. Verifica que el backend esté corriendo.
-        </div>
-      )}
-
-      {cargando && <div className="spinner">Cargando juegos…</div>}
-
-      {!cargando && juegosFiltrados.length === 0 && (
-        <div className="lista-vacia">
-          <p>No hay juegos que coincidan con los filtros.</p>
-          {juegos.length === 0 && (
-            <p>¡Agrega tu primer juego arriba! 🚀</p>
-          )}
-        </div>
-      )}
-
-      <div className="cards-grid">
-        {juegosFiltrados.map((juego, idx) => (
-          <div
-            key={juego.id}
-            ref={idx === juegosFiltrados.length - 1 ? lastItemRef : null}
-          >
-            <ItemCard juego={juego} onActualizado={cargar} />
-          </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

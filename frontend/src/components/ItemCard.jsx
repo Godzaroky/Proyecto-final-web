@@ -1,84 +1,87 @@
-import { useStorage } from '../context/StorageContext';
-import { getCategoriaById, getEstadoById } from '../utils/categorias';
+// src/components/ItemCard.jsx
+// React.memo: solo re-renderiza si sus props cambian
+import { memo } from 'react';
+import { CATEGORIAS } from '../utils/categorias';
 
-export default function ItemCard({ juego, onActualizado }) {
-  const { guardarItem, eliminarItem, cargando } = useStorage();
+const ESTADO_CONFIG = {
+  pendiente:  { emoji: '📋', label: 'Pendiente',  clase: 'estado-pendiente' },
+  jugando:    { emoji: '🎮', label: 'Jugando',    clase: 'estado-jugando' },
+  completado: { emoji: '✅', label: 'Completado', clase: 'estado-completado' },
+  abandonado: { emoji: '❌', label: 'Abandonado', clase: 'estado-abandonado' },
+};
 
-  const categoria = getCategoriaById(juego.categoriaId);
-  const estado = getEstadoById(juego.estado);
+const ESTADOS_SIGUIENTES = {
+  pendiente:  ['jugando', 'abandonado'],
+  jugando:    ['completado', 'abandonado'],
+  completado: ['jugando'],
+  abandonado: ['pendiente'],
+};
 
-  const handleEliminar = async () => {
-    if (!window.confirm(`¿Archivar "${juego.nombre}"?`)) return;
-    await eliminarItem(juego.id);
-    onActualizado?.();
-  };
-
-  const handleCambiarEstado = async (nuevoEstado) => {
-    await guardarItem({ ...juego, estado: nuevoEstado });
-    onActualizado?.();
-  };
+function ItemCard({ item, onEliminar, onCambiarEstado }) {
+  const categoria = CATEGORIAS.find((c) => c.id === item.categoriaId);
+  const estadoConf = ESTADO_CONFIG[item.estado] || ESTADO_CONFIG.pendiente;
+  const siguientes = ESTADOS_SIGUIENTES[item.estado] || [];
 
   return (
-    <article
-      className="item-card"
-      style={{ borderLeft: `4px solid ${categoria?.color || '#888'}` }}
-    >
-      <header className="card-header">
-        <span className="card-emoji">{categoria?.emoji || '🎮'}</span>
-        <div>
-          <h3 className="card-titulo">{juego.nombre}</h3>
-          <span
-            className="card-categoria"
-            style={{ color: categoria?.color }}
-          >
-            {categoria?.nombre}
-          </span>
-        </div>
-        <span className="card-estado-badge">
-          {estado?.emoji} {estado?.nombre}
+    <article className="item-card">
+      {/* Header */}
+      <div className="card-header">
+        <span
+          className="card-categoria"
+          style={{ backgroundColor: categoria?.color + '33', color: categoria?.color }}
+        >
+          {categoria?.emoji} {categoria?.nombre}
         </span>
-      </header>
+        <span className={`card-estado ${estadoConf.clase}`}>
+          {estadoConf.emoji} {estadoConf.label}
+        </span>
+      </div>
 
+      {/* Nombre y puntuación */}
+      <h3 className="card-nombre">{item.nombre}</h3>
+      {item.puntuacion !== null && item.puntuacion !== undefined && (
+        <div className="card-puntuacion">
+          {'⭐'.repeat(Math.round(item.puntuacion / 2))} {item.puntuacion}/10
+        </div>
+      )}
+
+      {/* Atributos específicos del tema */}
       <div className="card-atributos">
-        {juego.atributos?.plataforma && (
-          <span className="attr-chip">🖥 {juego.atributos.plataforma}</span>
+        {item.atributos?.plataforma && (
+          <span className="atributo-tag">🖥️ {item.atributos.plataforma}</span>
         )}
-        {juego.atributos?.horasTotales > 0 && (
-          <span className="attr-chip">⏱ {juego.atributos.horasTotales}h</span>
+        {item.atributos?.horasTotales > 0 && (
+          <span className="atributo-tag">⏱️ {item.atributos.horasTotales}h</span>
         )}
-        {juego.atributos?.desarrollador && (
-          <span className="attr-chip">🏢 {juego.atributos.desarrollador}</span>
-        )}
-        {juego.puntuacion != null && (
-          <span className="attr-chip">⭐ {juego.puntuacion}/10</span>
+        {item.atributos?.desarrollador && (
+          <span className="atributo-tag">🏢 {item.atributos.desarrollador}</span>
         )}
       </div>
 
-      {juego.notas && <p className="card-notas">{juego.notas}</p>}
+      {/* Notas */}
+      {item.notas && <p className="card-notas">{item.notas}</p>}
 
-      <footer className="card-footer">
-        <select
-          value={juego.estado}
-          onChange={(e) => handleCambiarEstado(e.target.value)}
-          disabled={cargando}
-          className="select-estado"
-        >
-          {['pendiente', 'jugando', 'completado', 'abandonado', 'platinado'].map(
-            (e) => (
-              <option key={e} value={e}>
-                {getEstadoById(e)?.emoji} {getEstadoById(e)?.nombre}
-              </option>
-            )
-          )}
-        </select>
+      {/* Acciones */}
+      <div className="card-acciones">
+        {siguientes.map((sig) => (
+          <button
+            key={sig}
+            className="btn-estado"
+            onClick={() => onCambiarEstado(item.id, sig)}
+          >
+            {ESTADO_CONFIG[sig].emoji} {ESTADO_CONFIG[sig].label}
+          </button>
+        ))}
         <button
-          className="btn-danger"
-          onClick={handleEliminar}
-          disabled={cargando}
+          className="btn-eliminar"
+          onClick={() => onEliminar(item.id)}
+          title="Archivar juego"
         >
-          🗑 Archivar
+          🗑️
         </button>
-      </footer>
+      </div>
     </article>
   );
 }
+
+export default memo(ItemCard);

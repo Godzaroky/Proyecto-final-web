@@ -1,80 +1,117 @@
-import { useState, useEffect, useRef } from 'react';
-import { StorageProvider } from './context/StorageProvider';
-import { ThemeProvider } from './context/ThemeProvider';
-import { UserProvider } from './context/UserProvider';
-import NavBar from './components/NavBar';
-import FormularioJuego from './components/FormularioJuego';
+// src/App.jsx
+import { useReducer, useEffect, useMemo, useCallback, useContext } from 'react';
+import { itemsReducer, estadoInicial } from './reducers/itemsReducer';
+import { StorageContext } from './context/StorageContext';
+import { ThemeContext } from './context/ThemeContext';
+import FormularioItem from './components/FormularioItem';
 import ListaItems from './components/ListaItems';
-import './index.css';
-
-/**
- * App principal.
- *
- * Atajos de teclado implementados con cleanup en el return del useEffect:
- *   Ctrl+N → enfoca el input de nombre en el formulario
- *   T      → cambia entre tema claro y oscuro
- *
- * El ref del input se sube hasta App para que el atajo Ctrl+N pueda
- * acceder a él desde cualquier parte de la app.
- */
-function AppContent() {
-  const [refrescador, setRefrescador] = useState(0);
-
-  // Ref para enfocar el input de nombre desde el atajo de teclado
-  const inputNombreRef = useRef(null);
-
-  const handleJuegoAgregado = () => {
-    setRefrescador((r) => r + 1);
-  };
-
-  // ─── Atajos de teclado ───────────────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e) => {
-      const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(
-        e.target.tagName
-      );
-
-      // Ctrl+N → enfocar input de nombre
-      if (e.ctrlKey && e.key === 'n') {
-        e.preventDefault();
-        inputNombreRef.current?.focus();
-        return;
-      }
-
-      // T → toggle tema (solo si no estamos escribiendo en un campo)
-      if (!enInput && e.key.toLowerCase() === 't') {
-        // Disparamos un click al botón de tema a través de un CustomEvent
-        // para no duplicar lógica aquí
-        document.dispatchEvent(new CustomEvent('toggle-tema'));
-      }
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler); // ← cleanup obligatorio
-  }, []);
-
-  return (
-    <div className="app-layout">
-      <NavBar />
-      <main className="app-main">
-        <FormularioJuego
-          inputRef={inputNombreRef}
-          onJuegoAgregado={handleJuegoAgregado}
-        />
-        <ListaItems refrescador={refrescador} />
-      </main>
-    </div>
-  );
-}
+import FiltrosPanel from './components/FiltrosPanel';
+import PanelGraficas from './components/PanelGraficas';
 
 export default function App() {
+  const { obtenerItems, guardarItem, eliminarItem, modo, setModo } =
+    useContext(StorageContext);
+  const { tema, toggleTema } = useContext(ThemeContext);
+
+  const [estado, dispatch] = useReducer(itemsReducer, estadoInicial);
+
+  // Cargar datos al montar (HIDRATAR)
+  useEffect(() => {
+    obtenerItems().then((items) => {
+      dispatch({ type: 'HIDRATAR', payload: items });
+    });
+  }, [obtenerItems]);
+
+  // Persistir lista cuando cambia
+  useEffect(() => {
+    if (modo === 'local') {
+      localStorage.setItem('items', JSON.stringify(estado.lista));
+    }
+  }, [estado.lista, modo]);
+
+  // useMemo: estadísticas generales (solo recalcula si lista cambia)
+  const estadisticas = useMemo(() => {
+    const activos = estado.lista.filter((j) => j.activo);
+    return {
+      total:      activos.length,
+      completados: activos.filter((j) => j.estado === 'completado').length,
+      jugando:    activos.filter((j) => j.estado === 'jugando').length,
+      pendientes: activos.filter((j) => j.estado === 'pendiente').length,
+      horasTotales: activos.reduce(
+        (acc, j) => acc + (j.atributos?.horasTotales || 0),
+        0
+      ),
+    };
+  }, [estado.lista]);
+
+  // useCallback: handler agregar — estable entre renders
+  const handleAgregar = useCallback(
+    async (nuevoJuego) => {
+      dispatch({ type: 'AGREGAR', payload: nuevoJuego });
+      await guardarItem(nuevoJuego);
+    },
+    [dispatch, guardarItem]
+  );
+
   return (
-    <ThemeProvider>
-      <UserProvider>
-        <StorageProvider>
-          <AppContent />
-        </StorageProvider>
-      </UserProvider>
-    </ThemeProvider>
+    <div className="app">
+      {/* Header */}
+      <header className="app-header">
+        <div className="header-left">
+          <h1 className="app-titulo">🎮 Mi Backlog</h1>
+          <span className="app-subtitulo">Tracker de Videojuegos</span>
+        </div>
+        <div className="header-acciones">
+          <button
+            className="btn-modo"
+            onClick={() => setModo(modo === 'api' ? 'local' : 'api')}
+            title={`Modo actual: ${modo}`}
+          >
+            {modo === 'api' ? '☁️ API' : '💾 Local'}
+          </button>
+          <button className="btn-tema" onClick={toggleTema} title="Cambiar tema (T)">
+            {tema === 'oscuro' ? '☀️' : '🌙'}
+          </button>
+        </div>
+      </header>
+
+      {/* Estadísticas rápidas */}
+      <section className="stats-bar">
+        <div className="stat-item">
+          <span className="stat-num">{estadisticas.total}</span>
+          <span className="stat-label">Total</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-num">{estadisticas.jugando}</span>
+          <span className="stat-label">🎮 Jugando</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-num">{estadisticas.completados}</span>
+          <span className="stat-label">✅ Completados</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-num">{estadisticas.pendientes}</span>
+          <span className="stat-label">📋 Pendientes</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-num">{estadisticas.horasTotales}h</span>
+          <span className="stat-label">⏱️ Horas totales</span>
+        </div>
+      </section>
+
+      <main className="app-main">
+        {/* Panel izquierdo: formulario + filtros + lista */}
+        <div className="panel-principal">
+          <FormularioItem onAgregar={handleAgregar} />
+          <FiltrosPanel estado={estado} dispatch={dispatch} />
+          <ListaItems estado={estado} dispatch={dispatch} />
+        </div>
+
+        {/* Panel derecho: gráficas */}
+        <aside className="panel-graficas-aside">
+          <PanelGraficas items={estado.lista} />
+        </aside>
+      </main>
+    </div>
   );
 }
