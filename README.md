@@ -1,4 +1,4 @@
-# GameTracker — Mi Colección de Videojuegos
+# GameTracker — Colección de Videojuegos
 
 App full-stack para rastrear mi backlog personal de videojuegos.  
 Construida con React + Vite en el frontend y Node.js + Express + SQLite en el backend.
@@ -9,9 +9,11 @@ Construida con React + Vite en el frontend y Node.js + Express + SQLite en el ba
 
 ---
 
+## Link al video explicativo
+https://youtu.be/Rq8DiOqjJYY
+
 ## Capturas de pantalla
 
-> _(Agregar capturas con 3+ juegos reales antes de entregar)_
 
 ---
 
@@ -52,7 +54,7 @@ npm run dev
 
 ---
 
-## Mi paleta de colores
+## Paleta de colores
 
 ### Tema oscuro
 
@@ -138,7 +140,7 @@ La lógica de modo vive únicamente en `StorageProvider.jsx`.
 
 ---
 
-## Mi gráfica original
+## Gráfica original
 
 **¿Qué visualiza?**  
 La **Gráfica de Progreso % por mes** muestra la evolución de cuántos juegos
@@ -157,7 +159,7 @@ terminar ninguno. Es la visualización más valiosa para mi tema porque mide
 
 ---
 
-## Mis 3 decisiones técnicas
+## 3 decisiones técnicas
 
 ### 1. Estructura del reducer: acciones ortogonales
 
