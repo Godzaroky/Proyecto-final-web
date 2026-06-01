@@ -1,13 +1,13 @@
 // src/App.jsx
-import { useReducer, useEffect, useMemo, useCallback, useContext } from 'react';
+import { useReducer, useEffect, useCallback, useContext } from 'react';
 import { itemsReducer, estadoInicial } from './reducers/itemsReducer';
 import { StorageContext } from './context/StorageContext';
 import { ThemeContext } from './context/ThemeContext';
+import { useProgresoPorJuego } from './hooks/useProgresoPorJuego';
 import FormularioItem from './components/FormularioItem';
 import ListaItems from './components/ListaItems';
 import FiltrosPanel from './components/FiltrosPanel';
 import PanelGraficas from './components/PanelGraficas';
-import { useLocalStorage } from './hooks/useLocalStorage';
 
 export default function App() {
   const { obtenerItems, guardarItem, eliminarItem, modo, setModo } =
@@ -24,22 +24,14 @@ export default function App() {
   }, [obtenerItems]);
 
   // Persistir lista cuando cambia
-  const [items, setItems] = useLocalStorage('items', []);
+  useEffect(() => {
+    if (modo === 'local') {
+      localStorage.setItem('items', JSON.stringify(estado.lista));
+    }
+  }, [estado.lista, modo]);
 
-  // useMemo: estadísticas generales (solo recalcula si lista cambia)
-  const estadisticas = useMemo(() => {
-    const activos = estado.lista.filter((j) => j.activo);
-    return {
-      total:      activos.length,
-      completados: activos.filter((j) => j.estado === 'completado').length,
-      jugando:    activos.filter((j) => j.estado === 'jugando').length,
-      pendientes: activos.filter((j) => j.estado === 'pendiente').length,
-      horasTotales: activos.reduce(
-        (acc, j) => acc + (j.atributos?.horasTotales || 0),
-        0
-      ),
-    };
-  }, [estado.lista]);
+  // Estadísticas derivadas del backlog (custom hook de dominio)
+  const estadisticas = useProgresoPorJuego(estado.lista);
 
   // useCallback: handler agregar — estable entre renders
   const handleAgregar = useCallback(
