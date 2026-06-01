@@ -7,6 +7,7 @@ import FormularioItem from './components/FormularioItem';
 import ListaItems from './components/ListaItems';
 import FiltrosPanel from './components/FiltrosPanel';
 import PanelGraficas from './components/PanelGraficas';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 export default function App() {
   const { obtenerItems, guardarItem, eliminarItem, modo, setModo } =
@@ -23,11 +24,7 @@ export default function App() {
   }, [obtenerItems]);
 
   // Persistir lista cuando cambia
-  useEffect(() => {
-    if (modo === 'local') {
-      localStorage.setItem('items', JSON.stringify(estado.lista));
-    }
-  }, [estado.lista, modo]);
+  const [items, setItems] = useLocalStorage('items', []);
 
   // useMemo: estadísticas generales (solo recalcula si lista cambia)
   const estadisticas = useMemo(() => {

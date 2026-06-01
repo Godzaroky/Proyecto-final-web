@@ -1,31 +1,25 @@
 // src/context/ThemeContext.jsx
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useEffect } from 'react';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useAtajoTeclado } from '../hooks/useAtajoTeclado';
 
 export const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const [tema, setTema] = useState(
-    () => localStorage.getItem('tema') || 'oscuro'
-  );
+  // useLocalStorage persiste el tema entre sesiones (custom hook)
+  const [tema, setTema] = useLocalStorage('tema', 'oscuro');
 
+  // Aplica el atributo al body cada vez que cambia el tema.
+  // El guardado en localStorage ya lo hace useLocalStorage.
   useEffect(() => {
     document.body.setAttribute('data-theme', tema);
-    localStorage.setItem('tema', tema);
   }, [tema]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
-      if (enInput) return;
-      if (e.key.toLowerCase() === 't') {
-        setTema((prev) => (prev === 'oscuro' ? 'claro' : 'oscuro'));
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  const toggleTema = () =>
+    setTema((prev) => (prev === 'oscuro' ? 'claro' : 'oscuro'));
 
-  const toggleTema = () => setTema((prev) => (prev === 'oscuro' ? 'claro' : 'oscuro'));
+  // Atajo T para cambiar tema (custom hook, antes era un listener manual)
+  useAtajoTeclado('t', toggleTema);
 
   return (
     <ThemeContext.Provider value={{ tema, toggleTema }}>
