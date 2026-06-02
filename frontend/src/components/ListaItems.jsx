@@ -1,6 +1,6 @@
 // src/components/ListaItems.jsx
 import { useMemo, useCallback } from 'react';
-import ItemCard from './ItemCard';
+import ItemCard from "./ItemCard.jsx";
 
 export default function ListaItems({ estado, dispatch }) {
   const { lista, filtroCategoria, filtroEstado, busqueda } = estado;
