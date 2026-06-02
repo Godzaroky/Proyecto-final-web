@@ -4,8 +4,8 @@ App full-stack para rastrear mi backlog personal de videojuegos.
 Construida con React + Vite en el frontend y Node.js + Express + SQLite en el backend.
 
 **URLs de producción (Fase 4):**
-- Frontend: _pendiente (Vercel)_
-- Backend: _pendiente (Render)_
+- Frontend: https://proyecto-final-web-sbm6.vercel.app
+- Backend: https://gametracker-ff3w.onrender.com
 
 ---
 
@@ -14,6 +14,11 @@ https://youtu.be/Rq8DiOqjJYY
 
 ## Capturas de pantalla
 
+![Tema Oscuro](docs/screenshot-oscuro.png)
+
+![Tema Claro](docs/screenshot-claro.png)
+
+![Graficas](docs/screenshot-graficas.png)
 
 ---
 
